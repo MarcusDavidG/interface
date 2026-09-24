@@ -128,13 +128,13 @@ describe("usePendingContent", () => {
     const { result, rerender } = renderHook(
       ({ isLoading, hasData }: { isLoading: boolean; hasData: unknown }) =>
         usePendingContent(isLoading, hasData),
-      { initialProps: { isLoading: false, hasData: { id: "1" } as unknown } }
+      { initialProps: { isLoading: false, hasData: { id: "1" } } }
     )
 
     expect(result.current.isFirstLoad).toBe(false)
 
     // Data is cleared and reloading
-    rerender({ isLoading: true, hasData: null as unknown })
+    rerender({ isLoading: true, hasData: null as unknown as { id: string } })
 
     act(() => {
       vi.advanceTimersByTime(300)

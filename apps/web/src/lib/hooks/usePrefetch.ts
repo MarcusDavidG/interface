@@ -1,6 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query"
 import { useCallback } from "react"
-import { useRouter } from "@tanstack/react-router"
 
 /**
  * Prefetch market data and related queries on navigation intent.
@@ -8,7 +7,6 @@ import { useRouter } from "@tanstack/react-router"
  */
 export function usePrefetch() {
   const queryClient = useQueryClient()
-  const router = useRouter()
 
   const prefetchMarket = useCallback(
     async (marketId: string) => {
