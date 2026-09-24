@@ -29,7 +29,14 @@ let mockPositions: Array<Record<string, unknown>> = []
 
 vi.mock("../../hooks/useOracleCandles", () => ({
   useOracleCandles: () => ({
-    data: mockCandles,
+    data: {
+      candles: mockCandles,
+      sourceType: "oracle_reference",
+      venueName: "Binance Reference",
+      symbol: "BTC",
+      period: "5m",
+      network: "testnet",
+    },
     isLoading: mockIsLoading,
     isError: mockIsError,
   }),
@@ -326,5 +333,12 @@ describe("TVChartContainer", () => {
 
     const error = screen.getByRole("alert")
     expect(error).toHaveTextContent(/unable to load chart data for btc/i)
+  })
+
+  it("renders data source and venue identification metadata badge", () => {
+    mockCandles = SAMPLE_CANDLES
+    render(<TVChartContainer {...defaultProps} />)
+
+    expect(screen.getByText(/Reference Price \(Binance Reference\)/i)).toBeInTheDocument()
   })
 })

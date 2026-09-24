@@ -21,9 +21,11 @@ import {
   getChartPalette,
   positionLineColor,
 } from "../../lib/chart-theme"
-import type {CandlestickData, IChartApi, IPriceLine, ISeriesApi, UTCTimestamp} from "lightweight-charts";
+import type { CandlestickData, IChartApi, IPriceLine, ISeriesApi, UTCTimestamp } from "lightweight-charts"
 import type { OhlcBar } from "../../lib/oracle"
 import { formatUsd } from "@/shared/lib/format"
+import { cn } from "@workspace/ui/lib/utils"
+import { ENV } from "@/app/config/env"
 
 type ChartLine = {
   id: string
@@ -94,6 +96,8 @@ function toChartBar(bar: OhlcBar): CandlestickData<UTCTimestamp> {
   }
 }
 
+
+
 export function TVChartContainer({ symbol, period }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -103,7 +107,19 @@ export function TVChartContainer({ symbol, period }: Props) {
   // Prevents series.update() from firing against an empty or stale series.
   const hasDataRef = useRef(false)
 
-  const { data: candles = [], isLoading, isError } = useOracleCandles(symbol, period)
+  const {
+    data: candleData,
+    isLoading: isQueryLoading = false,
+    isError = false,
+    isPlaceholderData = false,
+    isFetching = false,
+  } = useOracleCandles(symbol, period)
+
+  const candles = candleData?.candles ?? []
+  const venueName = candleData?.venueName ?? "Oracle Reference"
+  const sourceType = candleData?.sourceType ?? "oracle_reference"
+  const network = candleData?.network ?? ENV.NETWORK
+
   const liveBar = useLiveBar(symbol, period)
   const { data: positions = [] } = usePositions()
 
@@ -115,9 +131,15 @@ export function TVChartContainer({ symbol, period }: Props) {
   const [themeVersion, setThemeVersion] = useState(0)
 
   const hasData = candles.length > 0
+  const isLoading = isQueryLoading || (!hasData && isFetching)
+  const isStale = isPlaceholderData || (isFetching && hasData)
   const isIdle = !isLoading && !hasData && !isError
+
   const summary = useMemo(() => getChartSummary(candles, liveBar, symbol, period), [candles, liveBar, symbol, period])
   const tableRows = useMemo(() => getRepresentativeRows(candles), [candles])
+
+  const currentSymbolRef = useRef(symbol)
+  const currentPeriodRef = useRef(period)
 
   // ── Mount chart once ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -171,21 +193,36 @@ export function TVChartContainer({ symbol, period }: Props) {
     }
   }, []) // mount once — symbol/period changes handled by separate effects below
 
-  // ── Clear stale data immediately when symbol or period changes ───────────────
-  // This runs BEFORE the candles effect so there is never a window where
-  // series.update() fires against data belonging to a different symbol/period.
+  // ── Handle symbol / period changes ──────────────────────────────────────────
   useEffect(() => {
+    const symbolChanged = currentSymbolRef.current !== symbol
+    currentSymbolRef.current = symbol
+    currentPeriodRef.current = period
+
     if (!seriesRef.current) return
-    seriesRef.current.setData([])
-    hasDataRef.current = false
-    // Remove all price lines — they belong to the previous symbol
-    priceLineRefs.current.forEach((pl) => seriesRef.current!.removePriceLine(pl))
-    priceLineRefs.current.clear()
-  }, [symbol, period])
+
+    // On market switch, clear price lines immediately since they belong to the previous market
+    if (symbolChanged) {
+      priceLineRefs.current.forEach((pl) => seriesRef.current!.removePriceLine(pl))
+      priceLineRefs.current.clear()
+
+      // When switching markets, if placeholder data is not active (i.e. not same market timeframe switch),
+      // clear the series immediately so old-market candles are never presented under a different market.
+      if (!isPlaceholderData && candles.length === 0) {
+        seriesRef.current.setData([])
+        hasDataRef.current = false
+      }
+    }
+  }, [symbol, period, isPlaceholderData, candles.length])
 
   // ── Load historical candles ────────────────────────────────────────────────
   useEffect(() => {
-    if (!seriesRef.current || candles.length === 0) return
+    if (!seriesRef.current) return
+    if (candles.length === 0) {
+      seriesRef.current.setData([])
+      hasDataRef.current = false
+      return
+    }
     seriesRef.current.setData(candles.map(toChartBar))
     hasDataRef.current = true
     chartRef.current?.timeScale().fitContent()
@@ -276,6 +313,19 @@ export function TVChartContainer({ symbol, period }: Props) {
 
   return (
     <div className="relative flex h-full w-full flex-col">
+      {/* ═══ Venue & Data Source Metadata Badge ═══════════════════════════════ */}
+      <div className="flex items-center justify-between border-b border-border bg-muted/20 px-3 py-1 text-xs text-muted-foreground">
+        <div className="flex items-center gap-1.5 font-mono text-[11px]">
+          <span className="text-muted-foreground/70">Data Source:</span>
+          <span className="rounded bg-muted px-1.5 py-0.5 font-medium text-foreground">
+            {sourceType === "oracle_reference" ? `Reference Price (${venueName})` : `Execution Fills (${venueName})`}
+          </span>
+        </div>
+        <span className="font-mono text-[10px] uppercase text-muted-foreground/60">
+          {network}
+        </span>
+      </div>
+
       {/* ═══ Chart area ═══════════════════════════════════════════════════════ */}
       <div className="relative min-h-0 flex-1">
         {/* Accessible summary for screen readers */}
@@ -287,9 +337,24 @@ export function TVChartContainer({ symbol, period }: Props) {
 
         {/* Loading skeleton */}
         {isLoading && (
-          <div className="absolute inset-0 z-10 flex flex-col gap-1 p-2" role="status" aria-label={`Loading ${period} chart data for ${symbol}…`}>
+          <div
+            className="absolute inset-0 z-10 flex flex-col gap-1 p-2 bg-background/50 backdrop-blur-[1px]"
+            role="status"
+            aria-label={`Loading ${period} chart data for ${symbol}…`}
+          >
             <Skeleton className="h-full w-full rounded-none opacity-50" />
             <VisuallyHidden>Loading {period} chart data for {symbol}…</VisuallyHidden>
+          </div>
+        )}
+
+        {/* Stale / updating timeframe indicator */}
+        {isStale && !isLoading && (
+          <div
+            className="absolute top-2 right-2 z-20 flex items-center gap-1.5 rounded bg-background/80 px-2.5 py-1 text-xs text-muted-foreground backdrop-blur border border-border"
+            role="status"
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+            <span>Updating {period}…</span>
           </div>
         )}
 
@@ -301,7 +366,7 @@ export function TVChartContainer({ symbol, period }: Props) {
         )}
 
         {/* Error state */}
-        {isError && (
+        {isError && !hasData && (
           <div role="alert" className="flex h-full items-center justify-center text-xs text-destructive">
             Unable to load chart data for {symbol}
           </div>
@@ -310,11 +375,11 @@ export function TVChartContainer({ symbol, period }: Props) {
         {/* Lightweight Charts canvas — hidden from AT; the VisuallyHidden summary replaces it */}
         <div
           ref={containerRef}
-          className="h-full w-full"
+          className={cn("h-full w-full transition-opacity duration-150", isStale && "opacity-60")}
           role="img"
           aria-label={`Price chart for ${symbol}`}
           aria-describedby="chart-desc"
-          aria-hidden={isIdle || isError}
+          aria-hidden={isIdle || (isError && !hasData)}
         />
       </div>
 
