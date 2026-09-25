@@ -14,8 +14,9 @@ import { TradePanel } from "./trade-panel/TradePanel"
 import { BottomTabs } from "./positions/BottomTabs"
 import { CircuitBreakerBanner } from "./CircuitBreakerBanner"
 import { PanelErrorBoundary } from "./PanelErrorBoundary"
-import { MobileTradeNav, mobileViewClassName, type MobileTradeView } from "./MobileTradeNav"
+import { MobileTradeNav,  mobileViewClassName } from "./MobileTradeNav"
 import { OrderBookPanel } from "./orderbook/OrderBookPanel"
+import type {MobileTradeView} from "./MobileTradeNav";
 import { saveReferralCode } from "@/lib/contracts"
 
 const tradeRoute = getRouteApi("/trade")

@@ -43,7 +43,7 @@ export function BottomTabs({ onSelectPosition, value, onValueChange }: Props) {
   }
 
   return (
-    <Tabs value={value} defaultValue="positions" onValueChange={(next) => onValueChange?.(next as Props["value"])}>
+    <Tabs value={value} defaultValue="positions" onValueChange={(next) => onValueChange?.(next as NonNullable<Props["value"]>)}>
       <OrderExecutionFrozenBanner visible={hasFrozenOrders(orders)} />
       <TabsList className="border-b border-border bg-transparent px-4">
         <TabsTrigger value="positions">

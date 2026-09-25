@@ -110,8 +110,8 @@ export function useOrderBook(symbol: string | undefined): OrderBookState {
       for (const msg of bufferRef.current) {
         // discard events older than the snapshot
         if (msg.u <= book.lastUpdateId) continue
-        applyDelta(book.bids, msg.b as Array<[string, string]>)
-        applyDelta(book.asks, msg.a as Array<[string, string]>)
+        applyDelta(book.bids, msg.b)
+        applyDelta(book.asks, msg.a)
       }
       bufferRef.current = []
       snapshotDone.current = true
@@ -122,8 +122,8 @@ export function useOrderBook(symbol: string | undefined): OrderBookState {
       if (!mounted) return
       const bids = buildLevels(bookRef.current.bids, false)
       const asks = buildLevels(bookRef.current.asks, true)
-      const bestBid = bids[0]?.price ?? null
-      const bestAsk = asks[0]?.price ?? null
+      const bestBid = bids[0] ? bids[0].price : null
+      const bestAsk = asks[0] ? asks[0].price : null
       const spread = bestBid !== null && bestAsk !== null ? bestAsk - bestBid : null
       const mid    = bestBid !== null && bestAsk !== null ? (bestBid + bestAsk) / 2 : null
       const pct    = spread !== null && mid !== null && mid > 0 ? (spread / mid) * 100 : null
@@ -148,8 +148,8 @@ export function useOrderBook(symbol: string | undefined): OrderBookState {
         if (!mounted) return
         const book = bookRef.current
         book.lastUpdateId = data.lastUpdateId
-        book.bids = new Map(data.bids as Array<[string, string]>)
-        book.asks = new Map(data.asks as Array<[string, string]>)
+        book.bids = new Map(data.bids)
+        book.asks = new Map(data.asks)
         flush()
       } catch {
         if (!mounted) return
@@ -168,8 +168,8 @@ export function useOrderBook(symbol: string | undefined): OrderBookState {
       try {
         const msg = JSON.parse(evt.data as string) as BinanceDiffMsg
         if (snapshotDone.current) {
-          applyDelta(bookRef.current.bids, msg.b as Array<[string, string]>)
-          applyDelta(bookRef.current.asks, msg.a as Array<[string, string]>)
+          applyDelta(bookRef.current.bids, msg.b)
+          applyDelta(bookRef.current.asks, msg.a)
           publish()
         } else {
           bufferRef.current.push(msg)
@@ -204,6 +204,6 @@ type BinanceSnapshot = {
 
 type BinanceDiffMsg = {
   u: number   // final update id in event
-  b: Array<unknown>
-  a: Array<unknown>
+  b: Array<[string, string]>
+  a: Array<[string, string]>
 }

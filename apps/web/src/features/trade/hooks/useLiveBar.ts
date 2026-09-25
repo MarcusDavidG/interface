@@ -63,8 +63,8 @@ export function useLiveBar(symbol: string | undefined, period: string): OhlcBar 
         if (!mounted) return
         if (!isHiddenRef.current) {
           try {
-            const bars = await fetchOracleCandles(symbol!, period, 1)
-            if (bars.length > 0) setLiveBar(bars[bars.length - 1])
+            const res = await fetchOracleCandles(symbol!, period, 1)
+            if (res.candles.length > 0) setLiveBar(res.candles[res.candles.length - 1])
           } catch { /* silent retry */ }
         }
         pollTimerRef.current = setTimeout(tick, POLL_MS)
