@@ -1,7 +1,7 @@
 ---
 type: added
 area: trade
-pr: 1
+pr: 804
 breaking: false
 ---
 
