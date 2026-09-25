@@ -8,7 +8,9 @@ import {
   toSwapOrderParams,
 } from "./order-encoding"
 import { queryKeys } from "./query-keys"
+import { registerPendingOrder } from "./pending-orders"
 import type { CreateOrderParams, OrderKey } from "@/lib/contracts"
+import type { OrderType } from "../hooks/useOrders"
 import { NETWORK } from "@/app/config/network"
 import { queryClient } from "@/app/providers/QueryProvider"
 import { walletKit } from "@/features/wallet/lib/wallet-kit"
@@ -24,6 +26,34 @@ import { formatUsd } from "@/shared/lib/format"
 import { submitTx } from "@/shared/hooks/useTxSubmit"
 
 const CHAIN_ID = "stellar-mainnet"
+
+/**
+ * Remember a confirmed order locally until the indexer serves it.
+ *
+ * OB-082: without this, the gap between "transaction confirmed" and "indexer
+ * caught up" renders as an empty orders table over a real order.
+ */
+function trackPendingOrder(
+  account: string,
+  input: {
+    marketAddress: string
+    orderType: OrderType
+    isLong: boolean
+    sizeUsd: number
+    triggerPrice?: number
+  },
+  hash: string,
+): void {
+  registerPendingOrder(account, {
+    marketAddress: input.marketAddress,
+    marketName: MARKETS.find((m) => m.address === input.marketAddress)?.name,
+    orderType: input.orderType,
+    isLong: input.isLong,
+    sizeUsd: input.sizeUsd,
+    triggerPrice: input.triggerPrice,
+    txHash: hash,
+  })
+}
 
 // ── Parameter types ───────────────────────────────────────────────────────────
 
@@ -113,7 +143,20 @@ export async function createIncreaseOrder(params: IncreaseOrderParams): Promise<
       loadingMessage: `Opening ${params.isLong ? "Long" : "Short"} ${params.marketAddress}...`,
       successMessage: `${params.isLong ? "Long" : "Short"} order submitted! Size: ${formatUsd(params.sizeDeltaUsd)}`,
       successDescription: (hash) => `Tx: ${hash.slice(0, 8)}...`,
-      onSuccess: () => void invalidateTradeQueries(params.account),
+      onSuccess: (hash) => {
+        trackPendingOrder(
+          params.account,
+          {
+            marketAddress: params.marketAddress,
+            orderType: params.orderType,
+            isLong: params.isLong,
+            sizeUsd: params.sizeDeltaUsd,
+            triggerPrice: params.triggerPrice,
+          },
+          hash,
+        )
+        return invalidateTradeQueries(params.account)
+      },
       onError: parseSorobanError,
     },
   )
@@ -310,8 +353,23 @@ export async function createSidecarOrder(params: SidecarOrderParams): Promise<st
       loadingMessage: `Setting ${params.type === "takeProfit" ? "Take Profit" : "Stop Loss"}...`,
       successMessage: `${params.type === "takeProfit" ? "Take Profit" : "Stop Loss"} order set`,
       successDescription: (hash) => `Trigger: $${params.triggerPrice.toLocaleString()} | Tx: ${hash.slice(0, 8)}...`,
-      onSuccess: () =>
-        queryClient.invalidateQueries({ queryKey: queryKeys.trade.orders(CHAIN_ID, params.account) }),
+      onSuccess: (hash) => {
+        trackPendingOrder(
+          params.account,
+          {
+            marketAddress: params.marketAddress,
+            orderType:
+              params.type === "takeProfit" ? "LimitDecrease" : "StopLossDecrease",
+            isLong: params.isLong,
+            sizeUsd: sizeDeltaUsd,
+            triggerPrice: params.triggerPrice,
+          },
+          hash,
+        )
+        return queryClient.invalidateQueries({
+          queryKey: queryKeys.trade.orders(CHAIN_ID, params.account),
+        })
+      },
       onError: parseSorobanError,
     },
   )

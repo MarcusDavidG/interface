@@ -22,9 +22,10 @@ type Props = {
   mode: "add" | "remove" | null
   open: boolean
   onClose: () => void
+  onSubmit?: (amount: number) => Promise<string | null>
 }
 
-export function CollateralDialog({ position, mode, open, onClose }: Props) {
+export function CollateralDialog({ position, mode, open, onClose, onSubmit }: Props) {
   const [amount, setAmount] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -88,6 +89,12 @@ export function CollateralDialog({ position, mode, open, onClose }: Props) {
     setIsSubmitting(true)
     setErrorMsg(null)
     try {
+      if (onSubmit) {
+        const hash = await onSubmit(amountNum)
+        if (hash) onClose()
+        return
+      }
+
       // 1% slippage buffer so price fluctuation between submit and execution doesn't fail the order
       const addAcceptable  = pos.isLong ? pos.markPrice * 1.01 : pos.markPrice * 0.99
       const removeAcceptable = pos.isLong ? pos.markPrice * 0.99 : pos.markPrice * 1.01

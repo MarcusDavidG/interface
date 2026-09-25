@@ -30,7 +30,7 @@ const MAX_TRADES = 50
 export function deduplicateAndSortTrades(trades: Array<TradeItem>, maxRows = MAX_TRADES): Array<TradeItem> {
   const map = new Map<string, TradeItem>()
   for (const t of trades) {
-    if (!t || !t.id || typeof t.price !== "number" || typeof t.qty !== "number") continue
+    if (!t.id || typeof t.price !== "number" || typeof t.qty !== "number") continue
     if (!Number.isFinite(t.price) || t.price <= 0 || !Number.isFinite(t.qty) || t.qty <= 0) continue
     if (!Number.isFinite(t.time) || t.time <= 0) continue
     // Key by string id
@@ -131,7 +131,7 @@ export function useRecentTrades(symbol: string | undefined): UseRecentTradesResu
           if (!mounted) return
           try {
             const data = JSON.parse(evt.data as string) as BinanceTradeMsg
-            if (!data || !data.p || !data.q || !data.t) return
+            if (!data.p || !data.q || !data.t) return
 
             const newTrade: TradeItem = {
               id: String(data.t),
@@ -160,7 +160,6 @@ export function useRecentTrades(symbol: string | undefined): UseRecentTradesResu
           setStatus("disconnected")
         }
       } catch (err) {
-        if (!mounted) return
         setStatus("disconnected")
         setError(err instanceof Error ? err : new Error("Failed to connect WS"))
       }

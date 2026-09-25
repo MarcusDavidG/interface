@@ -12,6 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@workspace/ui/components/table"
+import { cn } from "@workspace/ui/lib/utils"
 import { useOracleCandles } from "../../hooks/useOracleCandles"
 import { useLiveBar } from "../../hooks/useLiveBar"
 import { usePositions } from "../../hooks/usePositions"
@@ -24,7 +25,6 @@ import {
 import type { CandlestickData, IChartApi, IPriceLine, ISeriesApi, UTCTimestamp } from "lightweight-charts"
 import type { OhlcBar } from "../../lib/oracle"
 import { formatUsd } from "@/shared/lib/format"
-import { cn } from "@workspace/ui/lib/utils"
 import { ENV } from "@/app/config/env"
 
 type ChartLine = {
