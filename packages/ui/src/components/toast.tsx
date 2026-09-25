@@ -20,6 +20,8 @@ export type ToastItem = {
   duration: number
   action?: ToastAction
   persistent?: boolean
+  /** Progress toasts stay visible until explicitly dismissed or terminal outcome; terminal updates are auto-dismissible */
+  isTerminal?: boolean
 }
 
 let _counter = 0
@@ -249,7 +251,8 @@ function Toast({
   const [isHovered, setIsHovered] = React.useState(false)
 
   React.useEffect(() => {
-    if (item.persistent || item.duration <= 0 || isHovered) {
+    const shouldAutoDismiss = item.isTerminal || (!item.persistent && item.duration > 0)
+    if (!shouldAutoDismiss || isHovered) {
       if (timerRef.current) clearTimeout(timerRef.current)
       return
     }
@@ -257,7 +260,7 @@ function Toast({
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current)
     }
-  }, [item.id, item.duration, item.persistent, isHovered, onDismiss, revision])
+  }, [item.id, item.duration, item.persistent, item.isTerminal, isHovered, onDismiss, revision])
 
   return (
     <div
