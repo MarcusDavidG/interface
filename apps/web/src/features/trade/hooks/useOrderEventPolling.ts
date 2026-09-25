@@ -19,14 +19,24 @@ function extractEventText(event: unknown): string {
 
 export function useOrderEventPolling() {
   const account = useWalletStore((state) => state.address)
+  const network = useWalletStore((state) => state.network)
   const queryClient = useQueryClient()
   const lastCursor = useRef<string | null>(null)
   const timer = useRef<number | null>(null)
+  // OB-117: identifies which account+network subscription an in-flight poll
+  // belongs to. Effect cleanup bumps this so a poll that was already
+  // in-flight when the account/network changed can detect, right after its
+  // await resolves, that it is no longer current — instead of only being
+  // stopped from rescheduling itself. Without this, a delayed response for
+  // the old account/network could still invalidate caches and advance the
+  // cursor after the user had already switched away.
+  const generation = useRef(0)
 
   useEffect(() => {
     if (!account) return
 
-    let cancelled = false
+    const currentGeneration = ++generation.current
+    const isCurrent = () => generation.current === currentGeneration
     lastCursor.current = null
 
     const poll = async () => {
@@ -43,6 +53,13 @@ export function useOrderEventPolling() {
         }
 
         const response = await sorobanRpc.getEvents(params as any)
+
+        // OB-117: the account/network may have changed while this request
+        // was in flight. Discard the response entirely rather than letting
+        // it touch the cache, cursor, or schedule another poll under the
+        // wrong identity.
+        if (!isCurrent()) return
+
         const events = (response as any)?.records ?? response ?? []
 
         const matching = (Array.isArray(events) ? events : []).filter((event) => {
@@ -60,6 +77,8 @@ export function useOrderEventPolling() {
           ])
         }
 
+        if (!isCurrent()) return
+
         const lastEvent = (Array.isArray(events) ? events : []).slice(-1)[0]
         if (lastEvent?.paging_token) {
           lastCursor.current = lastEvent.paging_token
@@ -69,7 +88,7 @@ export function useOrderEventPolling() {
       } catch (error) {
         if (import.meta.env.DEV) console.warn("Order event polling failed", error)
       } finally {
-        if (!cancelled) {
+        if (isCurrent()) {
           timer.current = window.setTimeout(poll, POLL_INTERVAL_MS)
         }
       }
@@ -78,10 +97,15 @@ export function useOrderEventPolling() {
     void poll()
 
     return () => {
-      cancelled = true
+      generation.current += 1
       if (timer.current) {
         window.clearTimeout(timer.current)
+        timer.current = null
       }
     }
-  }, [account, queryClient])
+    // `network` is intentionally a dependency (OB-117): switching networks
+    // with the same wallet address must tear down and restart this
+    // subscription from a fresh cursor rather than keep polling against
+    // whichever network was active when the effect first ran.
+  }, [account, network, queryClient])
 }

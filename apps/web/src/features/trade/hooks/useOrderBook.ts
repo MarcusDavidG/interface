@@ -30,14 +30,19 @@ type RawBook = {
   lastUpdateId: number
 }
 
-function applyDelta(map: Map<string, string>, entries: Array<[string, string]>) {
+// Exported for unit testing (OB-119): these are the pure, replayable pieces
+// of book reconciliation — applying an ordered run of deltas must converge
+// to the same final state regardless of how those deltas were batched into
+// renders, since `schedulePublish()` only bounds how often this
+// accumulated state is committed, never which deltas get applied to it.
+export function applyDelta(map: Map<string, string>, entries: Array<[string, string]>) {
   for (const [price, size] of entries) {
     if (parseFloat(size) === 0) map.delete(price)
     else map.set(price, size)
   }
 }
 
-function buildLevels(
+export function buildLevels(
   map: Map<string, string>,
   ascending: boolean,
 ): Array<OrderBookLevel> {
@@ -82,6 +87,11 @@ export function useOrderBook(symbol: string | undefined): OrderBookState {
   const bufferRef    = useRef<Array<BinanceDiffMsg>>([])
   const snapshotDone = useRef(false)
   const wsRef        = useRef<WebSocket | null>(null)
+  // OB-119: coalesces bursty WS deltas into at most one render per frame.
+  // `bookRef` (the source of truth) is still mutated synchronously on every
+  // message — nothing is dropped — this only bounds how often that
+  // accumulated state is committed to React state.
+  const publishFrame = useRef<number | null>(null)
 
   useEffect(() => {
     if (!symbol) {
@@ -116,6 +126,20 @@ export function useOrderBook(symbol: string | undefined): OrderBookState {
       bufferRef.current = []
       snapshotDone.current = true
       publish()
+    }
+
+    // OB-119: schedules a coalesced publish — at most one per animation
+    // frame — instead of committing on every single WS message. Under a
+    // burst of deltas, only the last-scheduled frame actually renders, and
+    // it always reads the fully up-to-date `bookRef`, so the result is the
+    // same final state as publishing on every message, just at a bounded
+    // render frequency.
+    function schedulePublish() {
+      if (!mounted || publishFrame.current !== null) return
+      publishFrame.current = requestAnimationFrame(() => {
+        publishFrame.current = null
+        publish()
+      })
     }
 
     function publish() {
@@ -186,6 +210,10 @@ export function useOrderBook(symbol: string | undefined): OrderBookState {
 
     return () => {
       mounted = false
+      if (publishFrame.current !== null) {
+        cancelAnimationFrame(publishFrame.current)
+        publishFrame.current = null
+      }
       ws.close()
       wsRef.current = null
     }
