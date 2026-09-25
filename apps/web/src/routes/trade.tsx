@@ -13,7 +13,7 @@ const TradePage = lazy(() =>
 export type TradeSearch = {
   market?: string
   type?: "long" | "short"
-  panel?: "positions" | "orders" | "trades" | "claims"
+  panel?: "positions" | "orders" | "history" | "trades" | "claims"
   ref?: string
 }
 
@@ -29,6 +29,7 @@ export const Route = createFileRoute("/trade")({
     panel:
       search.panel === "positions" ||
       search.panel === "orders" ||
+      search.panel === "history" ||
       search.panel === "trades" ||
       search.panel === "claims"
         ? search.panel

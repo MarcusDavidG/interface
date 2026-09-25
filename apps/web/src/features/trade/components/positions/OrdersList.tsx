@@ -36,9 +36,9 @@ export function OrdersList() {
           <StatusBadge variant={o.isLong ? "success" : "danger"}>
             {o.isLong ? "Long" : "Short"}
           </StatusBadge>
-          {o.status === "frozen" && (
-            <StatusBadge variant="warning">Frozen</StatusBadge>
-          )}
+          <StatusBadge variant={o.status === "frozen" ? "warning" : "neutral"}>
+            {cancelling === o.key ? "Cancelling" : o.awaitingIndex ? "Pending index" : o.status === "frozen" ? "Frozen" : "Open"}
+          </StatusBadge>
         </div>
       ),
     },
@@ -49,13 +49,26 @@ export function OrdersList() {
     },
     {
       id: "size",
-      header: "Size",
-      accessor: (o) => <Numeric value={o.sizeUsd} format="usd" />,
+      header: "Original / remaining",
+      accessor: (o) => (
+        <div className="tabular-nums">
+          <Numeric value={o.sizeUsd} format="usd" />
+          <span className="text-muted-foreground"> / </span>
+          <Numeric value={o.sizeUsd} format="usd" />
+        </div>
+      ),
     },
     {
       id: "trigger",
       header: "Trigger",
-      accessor: (o) => <Numeric value={o.triggerPrice} format="usd" />,
+      accessor: (o) => o.limitOrTrigger === "market" ? (
+        <span className="text-muted-foreground">Market</span>
+      ) : (
+        <div>
+          <span className="text-muted-foreground">{o.limitOrTrigger === "limit" ? "Limit" : "Trigger"}: </span>
+          <Numeric value={o.triggerPrice} format="usd" />
+        </div>
+      ),
     },
     {
       id: "created",
@@ -73,7 +86,7 @@ export function OrdersList() {
         <Button
           size="xs"
           variant="outline"
-          disabled={cancelling === o.key}
+          disabled={o.awaitingIndex || cancelling === o.key}
           onClick={() => void handleCancel(o)}
         >
           {cancelling === o.key ? "\u2026" : "Cancel"}
@@ -94,7 +107,7 @@ export function OrdersList() {
         data={orders}
         isLoading={isLoading}
         emptyMessage={isDisabled ? "Indexer disabled - showing contract-only data" : "No open orders"}
-        keyExtractor={(o) => o.key}
+        keyExtractor={(o) => o.clientOrderId}
       />
     </>
   )

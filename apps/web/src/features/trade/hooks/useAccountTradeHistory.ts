@@ -20,6 +20,12 @@ export type UseAccountTradeHistoryResult = {
 }
 
 /**
+ * Stable empty array so consumers can memoize on `data` without a new array
+ * identity being created on every render while the query has no data yet.
+ */
+const NO_HISTORY: Array<PositionChange> = []
+
+/**
  * Fetch trade history (position changes) for a specific account from the SubQuery indexer.
  * Results are sorted by timestamp in descending order (most recent first).
  * When indexer is disabled, returns empty array with isDisabled=true.
@@ -43,7 +49,7 @@ export function useAccountTradeHistory(account: string | null): UseAccountTradeH
 
   if (!INDEXER_CONFIG.enabled) {
     return {
-      data: [],
+      data: NO_HISTORY,
       error: null,
       isLoading: false,
       isDisabled: true,
@@ -51,7 +57,7 @@ export function useAccountTradeHistory(account: string | null): UseAccountTradeH
   }
 
   return {
-    data: data ?? [],
+    data: data ?? NO_HISTORY,
     error: error,
     isLoading,
     isDisabled: false,

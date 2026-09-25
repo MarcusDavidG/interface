@@ -29,7 +29,7 @@ export function TradePage() {
   // Pre-fill the form from a shared deeplink (e.g. /trade?market=BTC&type=long).
   const search = tradeRoute.useSearch()
   const navigate = tradeRoute.useNavigate()
-  const [activePanel, setActivePanel] = useState<"positions" | "orders" | "trades" | "claims">(
+  const [activePanel, setActivePanel] = useState<"positions" | "orders" | "history" | "trades" | "claims">(
     search.panel ?? "positions"
   )
   const appliedDeeplink = useRef(false)
@@ -50,7 +50,7 @@ export function TradePage() {
 
   useEffect(() => setActivePanel(search.panel ?? "positions"), [search.panel])
 
-  function handlePanelChange(panel: "positions" | "orders" | "trades" | "claims") {
+  function handlePanelChange(panel: "positions" | "orders" | "history" | "trades" | "claims") {
     setActivePanel(panel)
     void navigate({ search: (previous) => ({ ...previous, panel }) })
   }

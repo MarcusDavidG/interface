@@ -33,6 +33,27 @@ export const indexerQueryKeys = {
   orders: {
     all: () => [...indexerQueryKeys.all(), "orders"] as const,
     byAccount: (account: string) => [...indexerQueryKeys.orders.all(), account] as const,
+    /**
+     * Prefix covering every filter variant of the paged history, so targeted
+     * invalidation can refresh the view without touching the whole namespace.
+     */
+    historyAll: (account: string) =>
+      [...indexerQueryKeys.orders.all(), "history", account] as const,
+    /**
+     * Paged order lifecycle history (OB-087). Every filter that changes the
+     * rendered result is part of the key, so two filter selections never share
+     * a cache entry (TanStack Query: query keys are a dependency of the data).
+     */
+    history: (
+      account: string,
+      filters: { marketKey: string | null; stage: string; range: string },
+    ) =>
+      [
+        ...indexerQueryKeys.orders.historyAll(account),
+        filters.marketKey,
+        filters.stage,
+        filters.range,
+      ] as const,
   },
 
   /** Market queries */
@@ -63,6 +84,24 @@ export const indexerQueryKeys = {
   tradeHistory: {
     all: () => [...indexerQueryKeys.all(), "tradeHistory"] as const,
     byAccount: (account: string) => [...indexerQueryKeys.tradeHistory.all(), account] as const,
+    /** Prefix covering every filter variant of the paged fills view. */
+    pagesAll: (account: string) =>
+      [...indexerQueryKeys.tradeHistory.all(), "pages", account] as const,
+    /**
+     * Paged executed fills (OB-087). Separate from `byAccount` because that key
+     * backs the unbounded aggregation read, while this one is the paginated
+     * Trades view. Carries every filter that changes the rendered result.
+     */
+    pages: (
+      account: string,
+      filters: { marketKey: string | null; side: string; range: string },
+    ) =>
+      [
+        ...indexerQueryKeys.tradeHistory.pagesAll(account),
+        filters.marketKey,
+        filters.side,
+        filters.range,
+      ] as const,
   },
 
   /** Referral queries */

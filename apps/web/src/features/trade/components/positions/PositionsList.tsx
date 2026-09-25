@@ -1,19 +1,24 @@
 import { useEffect, useRef, useState } from "react"
 import { toast } from "@workspace/ui/components/toast"
-import { useQueryClient } from "@tanstack/react-query"
 import { Button } from "@workspace/ui/components/button"
 import { DataTable } from "@workspace/ui/components/data-table"
 import { StatusBadge } from "@workspace/ui/components/status-badge"
 import { Numeric } from "@workspace/ui/components/numeric"
 import { usePositionsWithIndexer } from "../../hooks/usePositionsWithIndexer"
 import { useFundingRate } from "../../hooks/useFundingRate"
-import { claimFundingFees, createDecreaseOrder } from "../../lib/stellar"
-import { queryKeys } from "../../lib/query-keys"
+import { claimFundingFees } from "../../lib/stellar"
 import { CollateralDialog } from "./CollateralDialog"
 import type { Column } from "@workspace/ui/components/data-table"
 import type { Position } from "../../hooks/usePositions"
 import { useWalletStore } from "@/features/wallet/store/wallet-store"
 import { TokenIcon } from "@/shared/components/TokenIcon"
+import { useTokenPrices } from "../../hooks/useTokenPrices"
+import { usePositionActions } from "../../hooks/usePositionActions"
+import {
+  describePositionRisk,
+  RISK_SOURCE_LABEL,
+  riskSeverity,
+} from "../../lib/position-risk"
 
 type Props = {
   onSelectPosition?: (position: Position) => void
@@ -52,9 +57,10 @@ function useFundingCountdown(nextEpochTs: number | undefined): string {
 export function PositionsList({ onSelectPosition }: Props) {
   const { data: positions = [], isLoading, isDisabled } = usePositionsWithIndexer()
   const { data: fundingRate } = useFundingRate()
+  const { getStaleness } = useTokenPrices()
   const countdown = useFundingCountdown((fundingRate as any)?.nextEpochTs)
   const account = useWalletStore((state) => state.address)
-  const queryClient = useQueryClient()
+  const { submitClose, submitCollateral, isBusy } = usePositionActions()
   const [closing, setClosing] = useState<string | null>(null)
   const [claiming, setClaiming] = useState<string | null>(null)
   const [dialogPosition, setDialogPosition] = useState<Position | null>(null)
@@ -62,34 +68,8 @@ export function PositionsList({ onSelectPosition }: Props) {
 
   async function handleClose(position: Position) {
     setClosing(position.key)
-    try {
-      // 1% slippage: for a long close we sell at min_price, so acceptable = markPrice * 0.99
-      // for a short close we buy back at max_price, so acceptable = markPrice * 1.01
-      const closeAcceptablePrice = position.isLong
-        ? position.markPrice * 0.99
-        : position.markPrice * 1.01
-
-      await createDecreaseOrder({
-        account: position.account,
-        positionKey: position.key,
-        marketAddress: position.marketAddress,
-        collateralToken: position.collateralToken,
-        collateralDeltaAmount: 0, // 0 = let contract return all collateral on full close
-        sizeDeltaUsd: position.sizeUsd,
-        sizeDeltaUsdRaw: position.sizeInUsdRaw, // exact bigint avoids float64 precision loss
-        isLong: position.isLong,
-        acceptablePrice: closeAcceptablePrice,
-        orderType: "MarketDecrease",
-        receiveToken: position.collateralToken,
-      })
-      if (account) {
-        await queryClient.invalidateQueries({
-          queryKey: queryKeys.positions("stellar-mainnet", account),
-        })
-      }
-    } finally {
-      setClosing(null)
-    }
+    await submitClose(position, { isFull: true, sizeDeltaUsd: position.sizeUsd })
+    setClosing(null)
   }
 
   function handleShare(position: Position) {
@@ -154,6 +134,36 @@ export function PositionsList({ onSelectPosition }: Props) {
       accessor: (p) => {
         const closeToLiq = Math.abs(p.markPrice - p.liquidationPrice) / p.markPrice <= 0.1
         return <Numeric value={p.liquidationPrice} format="usd" role={closeToLiq ? "danger" : "neutral"} />
+      },
+    },
+    {
+      id: "risk",
+      header: "Available risk",
+      accessor: (p) => {
+        const reading = describePositionRisk({
+          sizeUsd: p.sizeUsd,
+          markPriceUsd: p.markPrice,
+          liquidationPriceUsd: p.liquidationPrice,
+          isLong: p.isLong,
+          markPriceStaleness: getStaleness(p.indexToken),
+        })
+
+        if (!reading.hasData) {
+          return <StatusBadge variant="muted">No data</StatusBadge>
+        }
+
+        return (
+          <div className="flex flex-col items-start gap-0.5">
+            <Numeric
+              value={reading.availableRiskUsd}
+              format="usd"
+              role={riskSeverity(reading)}
+            />
+            <span className="text-10 text-muted-foreground">
+              {reading.isStale ? "Stale oracle" : RISK_SOURCE_LABEL[reading.source]} Est.
+            </span>
+          </div>
+        )
       },
     },
     {
@@ -240,7 +250,7 @@ export function PositionsList({ onSelectPosition }: Props) {
           <Button
             size="xs"
             variant="outline"
-            disabled={closing === p.key}
+            pending={closing === p.key || isBusy(p.key)}
             onClick={(e) => {
               e.stopPropagation()
               void handleClose(p)
@@ -288,6 +298,18 @@ export function PositionsList({ onSelectPosition }: Props) {
         onClose={() => {
           setDialogPosition(null)
           setDialogMode(null)
+        }}
+        onSubmit={async (amount) => {
+          if (!dialogPosition || !dialogMode) return null
+          const hash = await submitCollateral(dialogPosition, {
+            mode: dialogMode,
+            amount,
+          })
+          if (hash) {
+            setDialogPosition(null)
+            setDialogMode(null)
+          }
+          return hash
         }}
       />
     </>
